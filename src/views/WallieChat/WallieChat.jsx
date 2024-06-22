@@ -16,7 +16,7 @@ export default function Chat() {
   useEffect(() => {
     setChatMessages([
       { text: 'Welcome to the chat!', isUser: false },
-      { text: 'Search for Your Favorite Stocks Like APPLE, NVIDIA, TESLA ...', isUser: true },
+      { text: 'Ask Wallie ', isUser: true },
     ]);
   }, []);
 
