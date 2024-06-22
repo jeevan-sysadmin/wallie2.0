@@ -10,10 +10,6 @@ module.exports = {
     "react/no-children-prop": "off",
     "@next/next/no-img-element": "off",
     "@next/next/no-page-custom-font": "off",
-
-
-    "newline-before-return": "error",
-
   },
   "settings": {
     "react": {

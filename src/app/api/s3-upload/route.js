@@ -1,59 +1,115 @@
-// src/pages/api/upload.js
-import { Storage } from 'aws-amplify';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { createReadStream, createWriteStream } from 'fs';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { NextResponse } from "next/server";
+import { S3Client, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { users } from "../login/users"; // Import the users array
 
-export default async function handler(req, res) {
-  if (req.method === 'POST') {
-    try {
-      const formData = req.body;
-      const file = formData.file;
-
-      if (!file) {
-        return res.status(400).json({ error: 'No file provided.' });
-      }
-
-      if (file.type.startsWith('video')) {
-        const uploadResult = await Storage.put(file.name, file, {
-          contentType: file.type,
-        });
-
-        return res.status(200).json({
-          message: 'Video file uploaded successfully to S3.',
-          location: `https://${process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${uploadResult.key}`,
-        });
-      } else if (file.type.startsWith('audio')) {
-        const tempFilePath = path.join(os.tmpdir(), file.name);
-        const writeStream = createWriteStream(tempFilePath);
-        writeStream.write(Buffer.from(file.arrayBuffer()));
-        writeStream.end();
-
-        await new Promise((resolve, reject) => {
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
-        });
-
-        const transcript = await openai.audio.transcriptions.create({
-          file: createReadStream(tempFilePath),
-          model: 'whisper-1',
-          language: 'en',
-        });
-
-        await fs.promises.unlink(tempFilePath);
-
-        return res.status(200).json({ text: transcript.text });
-      } else {
-        return res.status(400).json({ error: 'Unsupported file type.' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      return res.status(500).json({ error: 'An error occurred while processing the file.' });
+const s3Client = new S3Client({
+    region: process.env.NEXT_PUBLIC_AWS_S3_REGION,
+    credentials: {
+        accessKeyId: process.env.NEXT_PUBLIC_AWS_S3_ACCESS_KEY_ID,
+        secretAccessKey: process.env.NEXT_PUBLIC_AWS_S3_SECRET_ACCESS_KEY,
     }
-  } else {
-    res.setHeader('Allow', ['POST']);
-    res.status(405).end(`Method ${req.method} not allowed`);
+});
+
+async function createFolderIfNotExists(folderPath) {
+    try {
+        const params = {
+            Bucket: process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME,
+            Key: folderPath,
+            Body: "" // Empty body because we are creating a folder
+        };
+
+        const command = new PutObjectCommand(params);
+        await s3Client.send(command);
+    } catch (error) {
+        console.error("Error creating folder:", error);
+        throw error;
+    }
+}
+
+async function uploadFileToS3(file, fileName, userId) {
+  try {
+      const fileBuffer = file;
+
+      // Create user's folder if not exists
+      const userFolderPath = `users/${userId}/`;
+      await createFolderIfNotExists(userFolderPath);
+
+      let fileCategory;
+      // Determine file category based on file extension
+      if (fileName.endsWith(".pdf")) {
+          fileCategory = "pdfs";
+      } else if (fileName.endsWith(".mp4") || fileName.endsWith(".avi") || fileName.endsWith(".mov")) {
+          fileCategory = "videos";
+      } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") || fileName.endsWith(".png") || fileName.endsWith(".gif")) {
+          fileCategory = "images";
+      } else if (fileName.endsWith(".mp3") || fileName.endsWith(".WAV") || fileName.endsWith(".ogg")) {
+          fileCategory = "audio";
+      } else {
+          fileCategory = "other-files";
+      }
+
+      // Create category folder if not exists
+      const categoryFolderPath = `${userFolderPath}${fileCategory}/`;
+      await createFolderIfNotExists(categoryFolderPath);
+
+      // Check if the file with the same name already exists
+      const headParams = {
+          Bucket: process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME,
+          Key: `${categoryFolderPath}${fileName}`
+      };
+
+      try {
+          await s3Client.send(new HeadObjectCommand(headParams));
+          console.log("File already exists. Skipping upload.");
+
+          return fileName;
+      } catch (err) {
+          // File doesn't exist, proceed with upload
+          console.log("File doesn't exist. Uploading...");
+      }
+
+      const params = {
+          Bucket: process.env.NEXT_PUBLIC_AWS_S3_BUCKET_NAME,
+          Key: `${categoryFolderPath}${fileName}`,
+          Body: fileBuffer,
+          ContentType: "application/octet-stream" // Change content type according to your file type
+      };
+
+      const command = new PutObjectCommand(params);
+
+      await s3Client.send(command);
+
+      return fileName;
+  } catch (error) {
+      console.error("Error uploading file to S3:", error);
+      throw error;
   }
+}
+
+
+export async function POST(request) {
+    try {
+        if (!request) {
+            return NextResponse.json({ error: "Request is required." }, { status: 400 });
+        }
+
+        const formData = await request.formData();
+        const file = formData.get("file");
+
+        if (!file) {
+            return NextResponse.json({ error: "File is required." }, { status: 400 });
+        }
+
+        // Assuming you want to upload the file for the first user in the users array
+        const userId = users[0].id;
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const fileName = await uploadFileToS3(buffer, file.name, userId);
+
+        return NextResponse.json({ success: true, fileName });
+    } catch (error) {
+        console.error("Error handling POST request:", error);
+
+        return NextResponse.json({ error: "Error uploading file" });
+    }
 }

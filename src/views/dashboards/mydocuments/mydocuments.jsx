@@ -6,7 +6,8 @@ import { users } from '../../../app/api/login/users';
 import axios from 'axios';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import FolderContents from '/src/views/dashboards/mydocuments/folderContents.js';
+import FolderContents from './folderContents';
+
 
 
 

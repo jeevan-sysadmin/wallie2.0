@@ -20,7 +20,8 @@ function FolderContents() {
 
     async function fetchFolderContents() {
       try {
-        const response = await fetch(`/api/s3-list?userId=${userId}`);
+        const folderPath = currentDirectory.map(folder => folder.name).join('/');
+        const response = await fetch(`/api/s3-list?userId=${userId}&path=${folderPath}`);
         const data = await response.json();
 
         if (response.ok) {
@@ -37,8 +38,7 @@ function FolderContents() {
     }
 
     fetchFolderContents();
-  }, []);
-
+  }, [currentDirectory]);
 
   const handleFolderClick = (folder) => {
     setSelectedFolder(folder);
@@ -48,13 +48,10 @@ function FolderContents() {
     console.log(folder);
   };
 
-
-
-
   const handleFolderDoubleClick = async (folder) => {
     try {
-      const response = await fetch(`/api/s3-list?userId=${userId}&folder=${folder}`);
-
+      const folderPath = currentDirectory.map(f => f.name).join('/') + '/' + folder.name;
+      const response = await fetch(`/api/s3-list?userId=${userId}&path=${folderPath}`);
       const data = await response.json();
 
       if (response.ok) {
@@ -64,7 +61,7 @@ function FolderContents() {
         setCurrentDirectory(prev => [...prev, folder]);
 
         // Append folder name to the URL
-        const path = currentDirectory.map(f => f.name).join('/') + folder;
+        const path = currentDirectory.map(f => f.name).join('/') + '/' + folder.name;
         window.history.replaceState(null, '', `?path=${path}`);
       } else {
         setError(data.error);
@@ -97,7 +94,7 @@ function FolderContents() {
                 <CardContent>
                   <Box display="flex" alignItems="center">
                     <FolderIcon style={{ marginRight: 8, fontSize: 50 }} />
-                    <div>{item}</div>
+                    <div>{item.name}</div>
                   </Box>
                 </CardContent>
               </Card>
